@@ -45,3 +45,5 @@ a quantidade de execuções viáveis, as distâncias inicial e final,
 a melhoria obtida e o tempo de execução. Quando apenas uma
 instância é selecionada, também são apresentados os detalhes
 da melhor solução viável encontrada.
+
+Obs.: O commit inicial com os códigos, feito por Renan, sumiu, provavelmente, devido ao uso do comando push force por Davi.
