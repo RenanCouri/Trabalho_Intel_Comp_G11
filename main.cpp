@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <iomanip>
 #include <vector>
@@ -14,7 +15,6 @@
 
 using namespace std;
 
-const int MAX_TIPOS_ESCOLA = 2;
 const int N_EXECUCOES = 10;
 
 struct ResultadoInstancia {
@@ -62,13 +62,14 @@ string formatarMedida(bool disponivel, double valor, int casas = 2) {
 }
 
 // Preenche os objetos LocalProva já criados pelo construtor de resolvedor.
-void configurarLocais(resolvedor* r, Instancia* inst) {
+void configurarLocais(resolvedor* r, Instancia* inst,
+                      int maxTiposEscola) {
     for (int j = 0; j < inst->numLocais; j++) {
         LocalProva& lp = r->locaisProva[j];
         const DadosEscola& d = inst->escolas[j];
 
         lp.id = j;
-        lp.maxTipos = MAX_TIPOS_ESCOLA;
+        lp.maxTipos = maxTiposEscola;
         lp.numSalas = d.numSalas;
         lp.lat = d.lat;
         lp.lon = d.lon;
@@ -113,41 +114,49 @@ void configurarCandidatos(resolvedor* r, Instancia* inst) {
 }
 
 resolvedor* rodarExecucao(Instancia* inst, int seed,
+                          int maxTiposEscola,
                           double& distInicial,
                           bool& inicialViavel,
                           bool& finalViavel) {
     resolvedor* r = new resolvedor(inst->matDist, inst->numCandidatos,
-                                   inst->numLocais, MAX_TIPOS_ESCOLA);
+                                   inst->numLocais, maxTiposEscola);
 
-    configurarLocais(r, inst);
+    configurarLocais(r, inst, maxTiposEscola);
     configurarCandidatos(r, inst);
 
     r->seed = seed;
     r->construir();
 
     distInicial = r->avaliar();
+
     // Validação silenciosa: uma distância parcial não será tratada como solucao.
     inicialViavel = r->verificarSolucao(false);
 
     // buscaLocal retorna se a solucao final inteira é válida.
     finalViavel = r->buscaLocal(100);
+
     return r;
 }
 
 double calcularLimiteTeorico(resolvedor* r) {
     double limite = 0.0;
+
     for (int i = 0; i < r->numCandidatos; i++) {
         double melhor = numeric_limits<double>::infinity();
+
         for (int j = 0; j < r->numLocais; j++) {
             if (r->locaisProva[j].temTipo(r->candidatos[i].tipo) &&
                 r->matDist[i][j] < melhor) {
                 melhor = r->matDist[i][j];
             }
         }
+
         if (!isfinite(melhor))
             return numeric_limits<double>::quiet_NaN();
+
         limite += melhor;
     }
+
     return limite;
 }
 
@@ -157,24 +166,32 @@ void imprimirMetricasInstancia(const ResultadoInstancia& r) {
          << "/" << N_EXECUCOES << "\n";
 
     bool encontrou = r.numViaveis > 0;
+
     cout << "Melhor final: " << formatarMedida(encontrou, r.melhorDist)
          << (encontrou ? " km" : "") << "\n";
+
     cout << "Media final:  " << formatarMedida(encontrou, r.mediaDist)
          << (encontrou ? " km" : "") << "\n";
+
     cout << "Pior final:   " << formatarMedida(encontrou, r.piorDist)
          << (encontrou ? " km" : "") << "\n";
+
     cout << "Desvio:       " << formatarMedida(encontrou, r.desvio)
          << (encontrou ? " km" : "") << "\n";
+
     cout << "Amplitude:    " << formatarMedida(encontrou, r.amplitude)
          << (encontrou ? " km" : "") << "\n";
 
     bool inicialDisponivel = encontrou && r.inicialMelhorViavel;
+
     cout << "Dist. inicial da melhor: "
          << formatarMedida(inicialDisponivel, r.distInicialMelhor)
          << (inicialDisponivel ? " km" : "") << "\n";
+
     cout << "Melhoria da melhor:      "
          << formatarMedida(inicialDisponivel, r.melhoriaMelhor)
          << (inicialDisponivel ? " km" : "") << "\n";
+
     cout << "Seed da melhor: "
          << (encontrou ? to_string(r.melhorSeed) : "Sem solucao") << "\n";
 
@@ -187,9 +204,12 @@ void imprimirMetricasInstancia(const ResultadoInstancia& r) {
     }
 }
 
-void imprimirDetalhesMelhor(Instancia* inst, const ResultadoInstancia& resultado) {
+void imprimirDetalhesMelhor(Instancia* inst,
+                            const ResultadoInstancia& resultado,
+                            int maxTiposEscola) {
     if (resultado.numViaveis == 0) {
-        cout << "\n=== MELHOR SOLUCAO ===\nSem solucao; detalhes e gap nao serao exibidos.\n";
+        cout << "\n=== MELHOR SOLUCAO ===\n";
+        cout << "Sem solucao; detalhes e gap nao serao exibidos.\n";
         return;
     }
 
@@ -199,9 +219,10 @@ void imprimirDetalhesMelhor(Instancia* inst, const ResultadoInstancia& resultado
     double distInicial = 0.0;
     bool inicialViavel = false;
     bool finalViavel = false;
-    resolvedor* r = rodarExecucao(inst, resultado.melhorSeed,
-                                  distInicial, inicialViavel, finalViavel);
 
+    resolvedor* r = rodarExecucao(inst, resultado.melhorSeed,
+                                  maxTiposEscola,
+                                  distInicial, inicialViavel, finalViavel);
 
     if (!finalViavel) {
         cout << "Distancia final: Sem solucao\n";
@@ -212,9 +233,11 @@ void imprimirDetalhesMelhor(Instancia* inst, const ResultadoInstancia& resultado
 
     double atual = r->avaliar();
     r->imprimirResumoSolucao();
+
     cout << "\n=> SOLUCAO VALIDA! <=\n";
 
     double limite = calcularLimiteTeorico(r);
+
     if (isfinite(limite) && limite > 0.0) {
         cout << "\n--- Gap teorico da melhor solucao valida ---\n";
         cout << "Limite (sem capacidade): " << formatarNumero(limite) << " km\n";
@@ -230,7 +253,8 @@ void imprimirDetalhesMelhor(Instancia* inst, const ResultadoInstancia& resultado
 }
 
 ResultadoInstancia executarInstancia(const string& nomeArquivo,
-                                     bool mostrarDetalhesMelhor) {
+                                     bool mostrarDetalhesMelhor,
+                                     int maxTiposEscola) {
     ResultadoInstancia resultado;
     resultado.nome = nomeArquivo;
 
@@ -239,31 +263,40 @@ ResultadoInstancia executarInstancia(const string& nomeArquivo,
     cout << "============================================================\n";
 
     Instancia* inst = lerInstancia(nomeArquivo);
+
     if (!inst) {
         cout << "Resultado: ERRO DE LEITURA; execucoes nao realizadas.\n";
         return resultado;
     }
 
     resultado.arquivoCarregado = true;
+
     cout << "Candidatos: " << inst->numCandidatos << "\n";
     cout << "Escolas:    " << inst->numLocais << "\n";
+    cout << "Maximo de tipos por escola: " << maxTiposEscola << "\n";
     cout << "Execucoes:  " << N_EXECUCOES << "\n";
+
     cout << "\n--- RESULTADOS POR EXECUCAO ---\n";
 
     vector<double> distanciasFinaisViaveis;
     distanciasFinaisViaveis.reserve(N_EXECUCOES);
+
     double somaTempos = 0.0;
 
     for (int run = 0; run < N_EXECUCOES; run++) {
         int seedAtual = run * 1000 + 42;
+
         double distInicial = 0.0;
         bool inicialViavel = false;
         bool finalViavel = false;
 
         auto t0 = chrono::steady_clock::now();
-        resolvedor* r = rodarExecucao(inst, seedAtual, distInicial,
-                                      inicialViavel, finalViavel);
+
+        resolvedor* r = rodarExecucao(inst, seedAtual, maxTiposEscola,
+                                      distInicial, inicialViavel, finalViavel);
+
         double distFinal = finalViavel ? r->avaliar() : 0.0;
+
         auto t1 = chrono::steady_clock::now();
 
         double tempo = chrono::duration<double>(t1 - t0).count();
@@ -273,15 +306,18 @@ ResultadoInstancia executarInstancia(const string& nomeArquivo,
              << " | seed: " << setw(6) << seedAtual
              << " | inicial: " << setw(13)
              << formatarMedida(inicialViavel, distInicial);
+
         if (inicialViavel) cout << " km";
 
         cout << " | final: " << setw(13)
              << formatarMedida(finalViavel, distFinal);
+
         if (finalViavel) cout << " km";
 
         cout << " | melhoria: " << setw(13)
              << formatarMedida(inicialViavel && finalViavel,
                                distInicial - distFinal);
+
         if (inicialViavel && finalViavel) cout << " km";
 
         cout << " | tempo: " << formatarNumero(tempo) << " s\n";
@@ -290,20 +326,26 @@ ResultadoInstancia executarInstancia(const string& nomeArquivo,
             distanciasFinaisViaveis.push_back(distFinal);
             resultado.numViaveis++;
 
-            if (resultado.numViaveis == 1 || distFinal < resultado.melhorDist) {
+            if (resultado.numViaveis == 1 ||
+                distFinal < resultado.melhorDist) {
+
                 resultado.melhorDist = distFinal;
                 resultado.melhorSeed = seedAtual;
                 resultado.distInicialMelhor = distInicial;
                 resultado.inicialMelhorViavel = inicialViavel;
+
                 resultado.melhoriaMelhor = inicialViavel
                     ? distInicial - distFinal : 0.0;
 
                 resultado.limiteTeorico = calcularLimiteTeorico(r);
+
                 if (isfinite(resultado.limiteTeorico) &&
                     resultado.limiteTeorico > 0.0) {
+
                     resultado.gapRelativo = 100.0 *
                         (distFinal - resultado.limiteTeorico) /
                         resultado.limiteTeorico;
+
                     resultado.gapDisponivel = true;
                 } else {
                     resultado.gapDisponivel = false;
@@ -319,26 +361,33 @@ ResultadoInstancia executarInstancia(const string& nomeArquivo,
 
     if (!distanciasFinaisViaveis.empty()) {
         resultado.mediaDist = 0.0;
+
         for (double d : distanciasFinaisViaveis)
             resultado.mediaDist += d;
+
         resultado.mediaDist /= distanciasFinaisViaveis.size();
 
         resultado.piorDist = *max_element(distanciasFinaisViaveis.begin(),
                                            distanciasFinaisViaveis.end());
 
         double variancia = 0.0;
+
         for (double d : distanciasFinaisViaveis)
-            variancia += (d - resultado.mediaDist) * (d - resultado.mediaDist);
+            variancia += (d - resultado.mediaDist) *
+                         (d - resultado.mediaDist);
+
         resultado.desvio = sqrt(variancia / distanciasFinaisViaveis.size());
+
         resultado.amplitude = resultado.piorDist - resultado.melhorDist;
     }
 
     imprimirMetricasInstancia(resultado);
 
     if (mostrarDetalhesMelhor)
-        imprimirDetalhesMelhor(inst, resultado);
+        imprimirDetalhesMelhor(inst, resultado, maxTiposEscola);
 
     liberarInstancia(inst);
+
     return resultado;
 }
 
@@ -346,6 +395,7 @@ void imprimirResumoFinal(const vector<ResultadoInstancia>& resultados) {
     cout << "\n\n============================================================\n";
     cout << "RESUMO FINAL DAS INSTANCIAS\n";
     cout << "============================================================\n";
+
     cout << left
          << setw(22) << "Instancia" << " | "
          << setw(9)  << "Viaveis" << " | "
@@ -358,6 +408,7 @@ void imprimirResumoFinal(const vector<ResultadoInstancia>& resultados) {
          << setw(12) << "Melhoria" << " | "
          << setw(9)  << "Gap (%)" << " | "
          << "Tempo medio (s)\n";
+
     cout << string(178, '-') << "\n";
 
     for (const ResultadoInstancia& r : resultados) {
@@ -365,8 +416,11 @@ void imprimirResumoFinal(const vector<ResultadoInstancia>& resultados) {
         bool inicialDisponivel = encontrou && r.inicialMelhorViavel;
 
         string viaveis;
-        if (!r.arquivoCarregado) viaveis = "Erro leitura";
-        else viaveis = to_string(r.numViaveis) + "/" + to_string(N_EXECUCOES);
+
+        if (!r.arquivoCarregado)
+            viaveis = "Erro leitura";
+        else
+            viaveis = to_string(r.numViaveis) + "/" + to_string(N_EXECUCOES);
 
         cout << left
              << setw(22) << r.nome << " | "
@@ -400,6 +454,7 @@ void imprimirResumoFinal(const vector<ResultadoInstancia>& resultados) {
 
 int main() {
     vector<string> arquivos;
+
     for (int grupo = 1; grupo <= 2; grupo++) {
         for (int g = 1; g <= 14; g++) {
             arquivos.push_back("instancias/Instancia" + to_string(grupo) +
@@ -407,31 +462,65 @@ int main() {
         }
     }
 
-    cout << "Selecione a instancia para executar:\n";
+    // Escolha do numero maximo de tipos por escola.
+    cout << "Selecione o numero maximo de tipos por escola:\n";
+    cout << "  1. Um tipo por escola\n";
+    cout << "  2. Dois tipos por escola\n";
+    cout << "Opcao: ";
+
+    int maxTiposEscola;
+
+    if (!(cin >> maxTiposEscola) ||
+        (maxTiposEscola != 1 && maxTiposEscola != 2)) {
+        cerr << "Opcao invalida. Escolha 1 ou 2.\n";
+        return 1;
+    }
+
+    // Escolha da instancia.
+    cout << "\nSelecione a instancia para executar:\n";
     cout << "  0. Executar todas as 28 instancias\n";
+
     for (size_t i = 0; i < arquivos.size(); i++) {
         cout << setw(3) << (i + 1) << ". " << arquivos[i] << "\n";
     }
+
     cout << "Opcao: ";
 
     int opcao;
-    if (!(cin >> opcao) || opcao < 0 || opcao > (int)arquivos.size()) {
+
+    if (!(cin >> opcao) || opcao < 0 ||
+        opcao > (int)arquivos.size()) {
         cerr << "Opcao invalida.\n";
         return 1;
     }
 
+    cout << "\nConfiguracao selecionada:\n";
+    cout << "Maximo de tipos por escola: " << maxTiposEscola << "\n";
+
+    cout << "Instancia: "
+         << (opcao == 0 ? "Todas as 28 instancias"
+                        : arquivos[opcao - 1])
+         << "\n";
+
     vector<ResultadoInstancia> resultados;
+
     if (opcao == 0) {
         resultados.reserve(arquivos.size());
+
         for (const string& arquivo : arquivos) {
-            // No modo todas, evita imprimir os detalhes completos da melhor solucao
-            // de cada instancia; as metricas aparecem no resumo final.
-            resultados.push_back(executarInstancia(arquivo, false));
+            // No modo todas, evita imprimir os detalhes completos
+            // da melhor solucao de cada instancia.
+            resultados.push_back(
+                executarInstancia(arquivo, false, maxTiposEscola)
+            );
         }
     } else {
-        resultados.push_back(executarInstancia(arquivos[opcao - 1], true));
+        resultados.push_back(
+            executarInstancia(arquivos[opcao - 1], true, maxTiposEscola)
+        );
     }
 
     imprimirResumoFinal(resultados);
+
     return 0;
 }
